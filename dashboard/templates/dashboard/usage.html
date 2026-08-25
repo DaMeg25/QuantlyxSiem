@@ -1,0 +1,146 @@
+{% extends "dashboard/base.html" %}
+{% load lifecycle %}
+{% block title %}Usage{% endblock %}
+
+{% block content %}
+<p class="eyebrow">Credential use &mdash; last {{ window }} days</p>
+
+<section class="grid four" style="margin-bottom:18px">
+  <div class="panel figure">
+    <span class="value">{{ observation_total }}</span>
+    <span class="caption">privileged logins observed across {{ asset_total }} assets</span>
+  </div>
+  <div class="panel figure">
+    <span class="value fresh">{{ correlation_counts.brokered|default:0 }}<span class="unit"> + {{ correlation_counts.matched|default:0 }}</span></span>
+    <span class="caption">brokered by the vault, plus target logins matched to a retrieval</span>
+  </div>
+  <div class="panel figure">
+    <span class="value {% if correlation_counts.unexplained %}critical{% else %}fresh{% endif %}">{{ correlation_counts.unexplained|default:0 }}</span>
+    <span class="caption">logins no vault retrieval explains &mdash; a copy of the credential exists outside the vault</span>
+  </div>
+  <div class="panel figure">
+    <span class="value {% if correlation_counts.unmatched_account %}overdue{% else %}fresh{% endif %}">{{ correlation_counts.unmatched_account|default:0 }}</span>
+    <span class="caption">logins by accounts not managed in any vault</span>
+  </div>
+</section>
+
+<section class="grid two" style="margin-bottom:18px">
+  <div class="panel">
+    <h2>Blast radius &mdash; what one credential opens</h2>
+    <table>
+      <thead><tr><th>Credential</th><th>Mapped to</th><th>Also reaches</th><th class="num">Assets</th><th class="num">Unexplained</th></tr></thead>
+      <tbody>
+      {% for row in radius_rows %}
+        <tr>
+          <td class="name"><a href="{% url 'account-detail' row.account.pk %}">{{ row.account.username }}</a>
+            <div style="color:var(--ink-faint);font-size:10.5px">{{ row.account.system.name }} &middot; {{ row.asset_types|join:", " }}</div>
+          </td>
+          <td class="dim">{{ row.account.target_address|default:"&mdash;" }}</td>
+          <td class="dim">{% for asset in row.sample %}{{ asset.identifier }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+          <td class="num {% if row.asset_count > 11 %}stale{% endif %}">{{ row.asset_count }}</td>
+          <td class="num {% if row.unexplained %}stale{% endif %}">{{ row.unexplained }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5" class="empty">No usage recorded. Connect a telemetry source, or a platform that brokers sessions.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="evidence" style="margin-top:12px">Reach decides two things at once: how far a compromise of this one credential travels, and how many systems a rotation touches. The second is why the first never gets fixed.</p>
+  </div>
+
+  <div class="panel">
+    <h2>How the estate is being reached</h2>
+    <div class="bars">
+      {% for row in by_mechanism %}
+      <div class="row">
+        <span style="font-size:10px">{{ row.mechanism }}</span>
+        <span class="track"><span class="lump" style="width:{{ row.percent }}%;{% if row.mechanism == 'target_authentication' or row.mechanism == 'network_aaa' %}background:var(--approaching){% endif %}"></span></span>
+        <span class="count">{{ row.count }}</span>
+      </div>
+      {% empty %}
+      <div class="row"><span>&mdash;</span><span class="track"></span><span class="count">0</span></div>
+      {% endfor %}
+    </div>
+    <p class="evidence" style="margin-top:14px">Brokered sessions and application fetches are facts: the vault mediated them. Target authentications and device accounting records are correlated after the event, so read them as inference &mdash; and as the only tier that can see a direct connection the vault never brokered.</p>
+
+    <h2 style="margin-top:20px">Telemetry feeds</h2>
+    <table>
+      <thead><tr><th>Feed</th><th>Kind</th><th>Last record</th><th class="num">Ingested</th></tr></thead>
+      <tbody>
+      {% for source in sources %}
+        <tr>
+          <td class="name">{{ source.name }}</td>
+          <td class="dim">{{ source.get_kind_display }}</td>
+          <td class="{% if source.stale %}stale{% else %}dim{% endif %}">{% if source.last_ingest_at %}{{ source.last_ingest_at|date:"Y-m-d H:i" }}{% else %}never{% endif %}{% if source.stale %} &middot; stale{% endif %}</td>
+          <td class="num">{{ source.records_ingested }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="empty">No target telemetry. USE-004 and USE-006 are inert without it.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="grid two">
+  <div class="panel" style="border-left:2px solid var(--critical)">
+    <h2>Logins with no vault retrieval behind them</h2>
+    <table>
+      <thead><tr><th>When</th><th>Credential</th><th>Asset</th><th>From</th><th>Feed</th></tr></thead>
+      <tbody>
+      {% for row in unexplained %}
+        <tr>
+          <td class="dim">{{ row.occurred_at|date:"Y-m-d H:i" }}</td>
+          <td class="name">{% if row.account %}<a href="{% url 'account-detail' row.account.pk %}">{{ row.observed_account_name }}</a>{% else %}{{ row.observed_account_name }}{% endif %}</td>
+          <td class="dim">{{ row.asset.identifier }}<div style="color:var(--ink-faint);font-size:10.5px">{{ row.asset.get_asset_type_display }}</div></td>
+          <td class="dim">{{ row.source_address|default:"&mdash;" }}</td>
+          <td class="dim">{{ row.source.name|default:"&mdash;" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5" class="empty">Every observed login traces back to a vault retrieval.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div>
+    <div class="panel" style="margin-bottom:16px">
+      <h2>Privileged accounts logging in from outside any vault</h2>
+      <table>
+        <thead><tr><th>Account seen on targets</th><th class="num">Logins</th><th class="num">Assets</th></tr></thead>
+        <tbody>
+        {% for row in unmanaged %}
+          <tr>
+            <td class="name">{{ row.observed_account_name }}</td>
+            <td class="num">{{ row.count }}</td>
+            <td class="num">{{ row.assets }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="3" class="empty">Every observed account matches a managed credential.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="evidence" style="margin-top:12px">These names appear in target logs and in no vault. Either the mapping is wrong or the account was never onboarded.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Assets reached by the most credentials</h2>
+      <table>
+        <thead><tr><th>Asset</th><th>Type</th><th class="num">Credentials</th><th class="num">Logins</th></tr></thead>
+        <tbody>
+        {% for asset in asset_rows %}
+          <tr>
+            <td class="name">{{ asset.identifier }}</td>
+            <td class="dim">{{ asset.get_asset_type_display }}</td>
+            <td class="num">{{ asset.credentials }}</td>
+            <td class="num">{{ asset.logins }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="4" class="empty">No assets observed yet.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}

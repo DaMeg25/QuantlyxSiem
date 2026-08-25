@@ -1,0 +1,87 @@
+{% extends "dashboard/base.html" %}
+{% load lifecycle %}
+{% block title %}Coverage{% endblock %}
+
+{% block content %}
+<p class="eyebrow">Detection coverage</p>
+
+{% if inert_rules %}
+<div class="panel" style="margin-bottom:18px;border-left:2px solid var(--overdue)">
+  <h2>{{ inert_rules|length }} rule{{ inert_rules|pluralize }} cannot run on any connected platform</h2>
+  <p class="evidence">
+    {% for row in inert_rules %}{{ row.rule_id }} needs {{ row.requires|join:", " }}{% if not forloop.last %} &middot; {% endif %}{% endfor %}
+  </p>
+  <p class="evidence" style="margin-top:8px">These produce no findings, which is indistinguishable from finding nothing. Either connect a platform that supplies the input or record the gap as an accepted limitation.</p>
+</div>
+{% endif %}
+
+<div class="panel" style="margin-bottom:18px">
+  <h2>Rules against platforms</h2>
+  <table class="matrix">
+    <thead>
+      <tr>
+        <th style="width:80px">Rule</th>
+        <th>Condition</th>
+        {% for system in systems %}<th>{{ system.name }}</th>{% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in matrix %}
+      <tr>
+        <td><span class="sev {{ row.severity }}">{{ row.rule_id }}</span></td>
+        <td class="dim">{{ row.title }}<div class="needs">needs {{ row.requires|join:", " }}</div></td>
+        {% for cell in row.cells %}
+        <td>
+          {% if cell.supported %}
+            <span class="cell live {% if cell.open_findings %}hits{% endif %}" title="live on this platform">
+              {% if cell.open_findings %}{{ cell.open_findings }} open{% else %}clear{% endif %}
+            </span>
+          {% else %}
+            <span class="cell inert" title="unsupported: platform cannot supply {{ cell.missing|join:', ' }}">inert</span>
+          {% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+      {% empty %}
+      <tr><td colspan="3" class="empty">No platforms enabled.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<section class="grid two">
+  <div class="panel">
+    <h2>Inputs by platform</h2>
+    <table>
+      <thead><tr><th>Input</th><th>Supplied by</th><th class="num">Platforms</th></tr></thead>
+      <tbody>
+      {% for row in capability_rows %}
+        <tr>
+          <td class="name">{{ row.capability }}</td>
+          <td class="dim">{{ row.supplied_by|join:", "|default:"none" }}</td>
+          <td class="num {% if row.count == 0 %}stale{% endif %}">{{ row.count }} / {{ row.total }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="evidence" style="margin-top:12px">Values are read from what each connector reported on its last successful collection, not from what the vendor advertises.</p>
+  </div>
+
+  <div class="panel">
+    <h2>Installed connectors</h2>
+    <table>
+      <thead><tr><th>Connector</th><th>Implementation</th><th>Supplies</th></tr></thead>
+      <tbody>
+      {% for entry in catalogue %}
+        <tr>
+          <td class="name">{{ entry.display_name }}<div style="color:var(--ink-faint);font-size:10.5px">{{ entry.vendor }}</div></td>
+          <td class="dim">{% if entry.specification_driven %}<span class="tag vendor">specification</span>{% else %}<span class="tag human">purpose built</span>{% endif %}</td>
+          <td class="dim">{{ entry.capabilities|join:", " }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="evidence" style="margin-top:12px">Registered at import from this package, from installed packages exposing the <code>pamsiem.connectors</code> entry point, and from specification vendors named in settings. Adding one needs no change here.</p>
+  </div>
+</section>
+{% endblock %}

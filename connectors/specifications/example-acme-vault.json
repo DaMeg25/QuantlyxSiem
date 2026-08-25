@@ -1,0 +1,72 @@
+{
+  "_comment": [
+    "Copy this into a platform's options as {\"spec\": { ... }} to onboard a new",
+    "tool without writing Python. Every key is described in connectors/generic.py.",
+    "Validate it with: python manage.py validate_connector \"<platform name>\"",
+    "before enabling collection."
+  ],
+  "auth": {
+    "style": "token_post",
+    "path": "/api/v2/session",
+    "body": {"user": "{username}", "secret": "{password}"},
+    "token_path": "data.sessionToken",
+    "header": "Authorization",
+    "header_format": "Bearer {token}"
+  },
+  "accounts": {
+    "path": "/api/v2/accounts",
+    "items_path": "data.items",
+    "pagination": {
+      "style": "offset",
+      "limit_parameter": "limit",
+      "offset_parameter": "offset",
+      "total_path": "data.total"
+    },
+    "field_map": {
+      "external_id": "accountId",
+      "username": "loginName",
+      "container": "vaultName",
+      "target_address": "host.fqdn",
+      "platform": "policyName",
+      "owner_identity": "owner.email",
+      "owner_team": "owner.group",
+      "business_application": "metadata.application",
+      "onboarded_at": {"path": "createdAt", "transform": "iso_datetime"},
+      "last_rotation_at": {"path": "rotation.lastChanged", "transform": "epoch_ms"},
+      "rotation_interval_days": {"path": "rotation.everyDays", "transform": "int"},
+      "auto_rotation_enabled": {"path": "rotation.managed", "transform": "bool"},
+      "last_used_at": {"path": "lastAccess", "transform": "iso_datetime"},
+      "status": {"path": "state", "map": {"ENABLED": "active", "LOCKED": "disabled", "PURGING": "pending_delete"}, "default": "unknown"},
+      "verification_ok": {"path": "lastCheck.result", "equals": "OK"},
+      "exclusive_checkout": {"path": "checkout.exclusive", "transform": "bool"},
+      "entitled_identity_count": {"path": "entitlements.count", "transform": "int"}
+    }
+  },
+  "activity": {
+    "path": "/api/v2/audit",
+    "items_path": "data.events",
+    "since_parameter": "from",
+    "since_format": "iso",
+    "pagination": {"style": "cursor", "cursor_parameter": "cursor", "next_cursor_path": "data.nextCursor"},
+    "field_map": {
+      "external_id": "eventId",
+      "account_external_id": "accountId",
+      "action": "eventType",
+      "occurred_at": {"path": "timestamp", "transform": "iso_datetime"},
+      "actor": "principal",
+      "source_address": "sourceIp",
+      "outcome": {"path": "result", "map": {"SUCCESS": "success", "DENIED": "failure"}},
+      "ticket_reference": "changeTicket"
+    }
+  },
+  "capabilities": [
+    "accounts",
+    "activity",
+    "rotation_interval",
+    "verification",
+    "usage_timestamps",
+    "ownership",
+    "entitlements",
+    "ticket_reference"
+  ]
+}

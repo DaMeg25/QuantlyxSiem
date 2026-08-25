@@ -1,0 +1,124 @@
+{% extends "dashboard/base.html" %}
+{% load lifecycle %}
+{% block title %}{{ object.reference }}{% endblock %}
+
+{% block content %}
+<p class="eyebrow">{{ object.reference }} &middot; {{ object.get_state_display }}</p>
+<h1 style="font-family:var(--mono);font-size:20px;font-weight:500;margin:0 0 18px">
+  {{ object.principal.identifier }} <span style="color:var(--ink-faint)">&rarr; {{ object.access_level }} on {{ object.resource.identifier }}</span>
+</h1>
+
+<section class="grid two" style="margin-bottom:18px">
+  <div class="panel">
+    <h2>The request</h2>
+    <table>
+      <tbody>
+        <tr><td class="dim">Raised by</td><td>{{ object.requested_by }}</td></tr>
+        <tr><td class="dim">Raised</td><td>{{ object.created_at|date:"Y-m-d H:i" }} ({{ object.age_days|humanise_days }} ago)</td></tr>
+        <tr><td class="dim">For</td><td>{{ object.principal.identifier }} &middot; {{ object.principal.get_principal_type_display }}{% if object.principal.responsible_owner %} &middot; owner {{ object.principal.responsible_owner }}{% endif %}</td></tr>
+        <tr><td class="dim">Resource</td><td>{{ object.resource.identifier }}{% if object.resource.production %} <span class="sev high">production</span>{% endif %} &middot; {{ object.resource.get_criticality_display }}</td></tr>
+        <tr><td class="dim">Period</td><td>{% if object.requested_days %}{{ object.requested_days }} days{% else %}standing{% endif %}{% if object.expires_at %} &middot; expires {{ object.expires_at|date:"Y-m-d" }}{% endif %}</td></tr>
+        <tr><td class="dim">Policy</td><td>{{ object.policy.name|default:"none matched" }} &middot; {{ object.approvals_required }} approval{{ object.approvals_required|pluralize }}</td></tr>
+        <tr><td class="dim">Ticket</td><td>{{ object.ticket_reference|default:"&mdash;" }}</td></tr>
+        {% if object.handoff_reference %}
+        <tr><td class="dim">Handoff</td><td>{{ object.handoff_system }} {{ object.handoff_reference }}</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+    {% if object.justification %}
+    <p class="eyebrow" style="margin-top:16px">Justification</p>
+    <p class="evidence">{{ object.justification }}</p>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <h2>Approval record</h2>
+    <div class="chain {% if not chain_intact %}broken{% endif %}" style="margin-bottom:14px">
+      {% if chain_intact %}Chain verified &middot; {{ chain_message }}{% else %}ALTERED &middot; {{ chain_message }}{% endif %}
+    </div>
+    <table>
+      <thead><tr><th class="num">#</th><th>Approver</th><th>Decision</th><th>When</th></tr></thead>
+      <tbody>
+      {% for step in steps %}
+        <tr>
+          <td class="num dim">{{ step.sequence }}</td>
+          <td class="name">{{ step.approver_identity }}{% if step.approver_groups %}<div style="color:var(--ink-faint);font-size:10.5px">{{ step.approver_groups|join:", " }}</div>{% endif %}</td>
+          <td class="dim"><span class="sev {% if step.decision == 'approved' %}low{% else %}critical{% endif %}">{{ step.decision }}</span>{% if step.comment %}<div class="evidence">{{ step.comment }}</div>{% endif %}</td>
+          <td class="dim">{{ step.decided_at|date:"Y-m-d H:i" }}{% if step.source_address %}<div style="color:var(--ink-faint);font-size:10.5px">{{ step.source_address }}</div>{% endif %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="empty">No decisions recorded yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="evidence" style="margin-top:12px">Each record is hashed over its own content and the previous one. Editing a decision after the fact breaks every link after it, and this banner says so.</p>
+  </div>
+</section>
+
+<section class="grid two">
+  <div class="panel">
+    <h2>Decide</h2>
+    {% if can_decide %}
+    <form method="post" action="{% url 'access-request-decide' object.reference %}">
+      {% csrf_token %}
+      {% for field in decision_form %}
+      <div class="field">
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+      </div>
+      {% endfor %}
+      <div class="actions">
+        <button type="submit" class="primary">Record decision</button>
+      </div>
+    </form>
+    {% else %}
+    <div class="notice warning">{{ refusal }}</div>
+    <p class="evidence">This is enforced at the point of decision, not reported afterwards. A control that raises a finding once production write access has already been self-approved has prevented nothing.</p>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    {% if object.state == 'approved' %}
+    <h2>Record the handoff</h2>
+    <form method="post" action="{% url 'access-request-handoff' object.reference %}">
+      {% csrf_token %}
+      {% for field in handoff_form %}
+      <div class="field">
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+      </div>
+      {% endfor %}
+      <div class="actions"><button type="submit" class="primary">Record handoff</button></div>
+    </form>
+    <p class="evidence" style="margin-top:12px">This system does not provision. Recording the handoff starts the clock; the grant appears when the platform reports the access, which is what makes an approval that never got provisioned visible.</p>
+    {% else %}
+    <h2>Resulting access</h2>
+    <table>
+      <thead><tr><th>Resource</th><th>Level</th><th>Origin</th><th>Confirmed</th></tr></thead>
+      <tbody>
+      {% for grant in grants %}
+        <tr>
+          <td class="name">{{ grant.resource.identifier }}</td>
+          <td class="dim">{{ grant.access_level }}</td>
+          <td class="dim">{{ grant.get_origin_display }}</td>
+          <td class="dim">{{ grant.last_confirmed_at|date:"Y-m-d" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="empty">{% if object.state == 'provisioned' %}Handed off, but no platform pull has confirmed the access yet.{% else %}No access recorded against this request.{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if object.state == 'provisioned' %}
+    <form method="post" action="{% url 'access-request-revoke' object.reference %}" style="margin-top:16px">
+      {% csrf_token %}
+      <div class="field">
+        <label for="reason">Reason for revoking</label>
+        <input type="text" name="reason" id="reason">
+      </div>
+      <div class="actions"><button type="submit" class="danger">Revoke</button></div>
+    </form>
+    {% endif %}
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

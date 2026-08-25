@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Quantlyx">
+  <title>Quantlyx</title>
+  <rect width="64" height="64" rx="13" fill="#101418"/>
+  <g transform="translate(32 32) scale(.74) translate(-32 -32)">
+  <g fill="none" stroke-linecap="round">
+    <circle cx="32.0" cy="32.0" r="24.0" stroke="#8FA1AC" stroke-width="7.0" opacity=".22"/>
+    <path d="M 34.51 8.13 A 24.0 24.0 0 1 1 12.58 17.89" stroke="#FF7A18" stroke-width="7.0"/>
+    <path d="M 43.8 43.8 L 55.8 55.8" stroke="#FF7A18" stroke-width="7.0"/>
+    <path d="M 32.00 3.30 L 32.00 -2.30" stroke="#DBE4E9" stroke-width="3.2" stroke-linecap="butt"/>
+  </g>
+  </g>
+</svg>

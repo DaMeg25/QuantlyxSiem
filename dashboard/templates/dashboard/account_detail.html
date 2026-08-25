@@ -1,0 +1,110 @@
+{% extends "dashboard/base.html" %}
+{% load lifecycle %}
+{% block title %}{{ account.username }}{% endblock %}
+
+{% block content %}
+<p class="eyebrow">{{ account.system.name }} &middot; {{ account.container|default:"no container" }}</p>
+<h1 style="font-family:var(--mono);font-size:22px;font-weight:500;margin:0 0 18px">
+  {{ account.username }}<span style="color:var(--ink-faint)">@{{ account.target_address|default:"unspecified target" }}</span>
+</h1>
+
+<section class="grid four" style="margin-bottom:18px">
+  <div class="panel figure">
+    <span class="value {{ account.rotation_pressure|posture }}">{{ account.credential_age_days|default:"never" }}<span class="unit">{% if account.credential_age_days %} days{% endif %}</span></span>
+    <span class="caption">since last rotation, interval {{ account.rotation_interval_days|default:"unset" }}</span>
+    <div class="meter" style="margin-top:12px">
+      <span class="fill {{ account.rotation_pressure|posture }}" style="width:{{ account.rotation_pressure|meter_width }}%"></span>
+      <span class="tick"></span>
+    </div>
+  </div>
+  <div class="panel figure">
+    <span class="value">{{ account.get_kind_display }}</span>
+    <span class="caption">classification &middot; {{ account.platform|default:"no platform policy" }}</span>
+  </div>
+  <div class="panel figure">
+    <span class="value" style="font-size:20px">{{ account.owner_identity|default:account.owner_team|default:"unassigned" }}</span>
+    <span class="caption">accountable owner &middot; {{ account.business_application|default:"no application recorded" }}</span>
+  </div>
+  <div class="panel figure">
+    <span class="value {% if account.risk_score > 60 %}overdue{% elif account.risk_score > 30 %}approaching{% else %}fresh{% endif %}">{{ account.risk_score }}</span>
+    <span class="caption">composite risk score, for sorting only</span>
+  </div>
+</section>
+
+<section class="grid two">
+  <div class="panel">
+    <h2>Lifecycle timeline</h2>
+    <ul class="timeline">
+      {% for event in events %}
+      <li>
+        <span class="when">{{ event.occurred_at|date:"Y-m-d H:i" }}</span>
+        <span class="what">{{ event.get_kind_display }}</span>
+        <span>{{ event.actor|default:"system" }}{% if event.source_address %} &middot; {{ event.source_address }}{% endif %}{% if event.ticket_reference %} &middot; {{ event.ticket_reference }}{% endif %}</span>
+      </li>
+      {% empty %}
+      <li><span class="when">&mdash;</span><span class="what">Nothing recorded</span><span></span></li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div>
+    <div class="panel" style="margin-bottom:16px">
+      <h2>Open findings</h2>
+      <table>
+        <thead><tr><th>Sev</th><th>Rule</th><th>Condition</th><th class="num">Age</th></tr></thead>
+        <tbody>
+        {% for finding in open_findings %}
+          <tr>
+            <td><span class="sev {{ finding.severity }}">{{ finding.severity }}</span></td>
+            <td class="dim">{{ finding.rule_id }}</td>
+            <td class="dim">{{ finding.title }}<div class="evidence">{% for key, value in finding.evidence.items %}{{ key }}={{ value }} {% endfor %}</div></td>
+            <td class="num dim">{{ finding.age_days|humanise_days }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="4" class="empty">In policy.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px">
+      <h2>Where this credential has been used</h2>
+      <table>
+        <thead><tr><th>Asset</th><th>Type</th><th>How</th><th class="num">Logins</th><th>Last</th></tr></thead>
+        <tbody>
+        {% for link in reach %}
+          <tr>
+            <td class="name">{{ link.asset.identifier }}{% if link.outside_mapped_scope %} <span class="sev high">off-scope</span>{% endif %}</td>
+            <td class="dim">{{ link.asset.get_asset_type_display }}</td>
+            <td class="dim">{{ link.mechanisms|join:", " }}</td>
+            <td class="num {% if link.unexplained_count %}stale{% endif %}">{{ link.observation_count }}{% if link.unexplained_count %} / {{ link.unexplained_count }}{% endif %}</td>
+            <td class="dim">{{ link.last_seen_at|date:"Y-m-d" }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="5" class="empty">No logins observed. The vault records retrieval; use comes from brokered sessions or target telemetry.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% if unexplained_usage %}
+      <p class="evidence" style="margin-top:12px"><span class="stale">{{ unexplained_usage }}</span> of these logins have no vault retrieval behind them, which means a working copy of this credential exists somewhere outside the vault.</p>
+      {% endif %}
+    </div>
+
+    <div class="panel">
+      <h2>Collected state</h2>
+      <table>
+        <tbody>
+          <tr><td class="dim">Status</td><td>{{ account.get_status_display }}</td></tr>
+          <tr><td class="dim">Automatic rotation</td><td>{{ account.auto_rotation_enabled|default_if_none:"unknown" }}</td></tr>
+          <tr><td class="dim">Last verification</td><td>{{ account.last_verification_at|date:"Y-m-d H:i"|default:"never" }} ({{ account.verification_ok|default_if_none:"unknown" }})</td></tr>
+          <tr><td class="dim">Consecutive rotation failures</td><td>{{ account.consecutive_rotation_failures }}</td></tr>
+          <tr><td class="dim">Last used</td><td>{{ account.last_used_at|date:"Y-m-d H:i"|default:"unknown" }}</td></tr>
+          <tr><td class="dim">Exclusive checkout</td><td>{{ account.exclusive_checkout|default_if_none:"unknown" }}</td></tr>
+          <tr><td class="dim">First seen by collector</td><td>{{ account.first_seen_at|date:"Y-m-d H:i" }}</td></tr>
+          <tr><td class="dim">Vendor identifier</td><td>{{ account.external_id }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}

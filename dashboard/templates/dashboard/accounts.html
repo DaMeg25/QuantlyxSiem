@@ -1,0 +1,83 @@
+{% extends "dashboard/base.html" %}
+{% load lifecycle %}
+{% block title %}Accounts{% endblock %}
+
+{% block content %}
+<p class="eyebrow">Managed credentials &mdash; {{ result_count }} matching</p>
+
+<form class="filters" method="get">
+  <input type="search" name="q" value="{{ filters.q }}" placeholder="account, host, safe, owner">
+  <select name="system">
+    <option value="">every platform</option>
+    {% for system in systems %}
+      <option value="{{ system.pk }}" {% if filters.system == system.pk|stringformat:"s" %}selected{% endif %}>{{ system.name }}</option>
+    {% endfor %}
+  </select>
+  <select name="kind">
+    <option value="">every kind</option>
+    {% for value, label in kinds %}
+      <option value="{{ value }}" {% if filters.kind == value %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <select name="status">
+    <option value="">every status</option>
+    {% for value, label in statuses %}
+      <option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <select name="posture">
+    <option value="">any posture</option>
+    <option value="overdue" {% if filters.posture == "overdue" %}selected{% endif %}>past rotation interval</option>
+    <option value="unrotated_bots" {% if filters.posture == "unrotated_bots" %}selected{% endif %}>non-human, ungoverned</option>
+    <option value="ownerless" {% if filters.posture == "ownerless" %}selected{% endif %}>no owner recorded</option>
+  </select>
+  <button type="submit">Apply</button>
+</form>
+
+<div class="panel">
+<table>
+  <thead>
+    <tr>
+      <th>Account</th><th>Kind</th><th>Target</th><th>Owner</th>
+      <th class="col-meter">Age against interval</th>
+      <th class="num">Age</th><th class="num">Interval</th><th>Rotation</th><th class="num">Risk</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for account in rows %}
+    <tr>
+      <td class="name"><a href="{% url 'account-detail' account.pk %}">{{ account.username }}</a>
+        <div style="color:var(--ink-faint);font-size:10.5px">{{ account.system.name }} &middot; {{ account.container|default:"&mdash;" }}</div>
+      </td>
+      <td><span class="tag {{ account.kind }}">{{ account.kind }}</span></td>
+      <td class="dim">{{ account.target_address|default:"&mdash;" }}</td>
+      <td class="dim">{{ account.owner_identity|default:account.owner_team|default:"unassigned" }}</td>
+      <td class="col-meter">
+        <div class="meter" title="{{ account.rotation_pressure }} of the policy interval consumed">
+          <span class="fill {{ account.rotation_pressure|posture }}" style="width:{{ account.rotation_pressure|meter_width }}%"></span>
+          <span class="tick"></span>
+        </div>
+      </td>
+      <td class="num dim">{{ account.credential_age_days|humanise_days }}</td>
+      <td class="num dim">{{ account.rotation_interval_days|default:"&mdash;" }}</td>
+      <td class="dim">
+        {% if account.auto_rotation_enabled is False %}<span class="sev high">manual</span>
+        {% elif account.consecutive_rotation_failures %}<span class="sev critical">failing &times;{{ account.consecutive_rotation_failures }}</span>
+        {% elif account.verification_ok is False %}<span class="sev high">out of sync</span>
+        {% else %}automatic{% endif %}
+      </td>
+      <td class="num">{{ account.risk_score }}</td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="9" class="empty">No accounts match these filters.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<div class="pager">
+  {% if rows.has_previous %}<a href="?page={{ rows.previous_page_number }}&amp;q={{ filters.q }}&amp;kind={{ filters.kind }}&amp;status={{ filters.status }}&amp;system={{ filters.system }}&amp;posture={{ filters.posture }}">previous</a>{% endif %}
+  <span>page {{ rows.number }} of {{ rows.paginator.num_pages }}</span>
+  {% if rows.has_next %}<a href="?page={{ rows.next_page_number }}&amp;q={{ filters.q }}&amp;kind={{ filters.kind }}&amp;status={{ filters.status }}&amp;system={{ filters.system }}&amp;posture={{ filters.posture }}">next</a>{% endif %}
+</div>
+{% endblock %}

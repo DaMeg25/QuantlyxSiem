@@ -1,0 +1,144 @@
+{% extends "dashboard/base.html" %}
+{% load lifecycle %}
+{% block title %}Posture{% endblock %}
+
+{% block content %}
+<p class="eyebrow">Estate posture</p>
+<section class="grid four" style="margin-bottom:18px">
+  <div class="panel figure">
+    <span class="value">{{ active_accounts }}</span>
+    <span class="caption">privileged credentials under management</span>
+  </div>
+  <div class="panel figure">
+    <span class="value {% if overdue_percent > 10 %}overdue{% elif overdue_percent > 2 %}approaching{% else %}fresh{% endif %}">
+      {{ overdue_count }}<span class="unit"> / {{ overdue_percent }}%</span>
+    </span>
+    <span class="caption">past their rotation interval</span>
+  </div>
+  <div class="panel figure">
+    <span class="value non-human">{{ non_human_ungoverned }}<span class="unit"> of {{ non_human_count }}</span></span>
+    <span class="caption">non-human credentials with rotation off or never rotated</span>
+  </div>
+  <div class="panel figure">
+    <span class="value {% if severity_counts.critical %}critical{% else %}fresh{% endif %}">{{ open_finding_count }}</span>
+    <span class="caption">
+      open findings &mdash;
+      <span class="sev critical">{{ severity_counts.critical }} critical</span>,
+      <span class="sev high">{{ severity_counts.high }} high</span>,
+      <span class="sev medium">{{ severity_counts.medium }} medium</span>
+    </span>
+  </div>
+</section>
+
+<section class="grid two" style="margin-bottom:18px">
+  <div class="panel">
+    <h2>Credential age against policy</h2>
+    <div class="bars">
+      {% for bucket in age_histogram %}
+      <div class="row {% if bucket.overdue %}past{% endif %}">
+        <span>{{ bucket.label }}</span>
+        <span class="track"><span class="lump" style="width:{{ bucket.percent }}%"></span></span>
+        <span class="count">{{ bucket.count }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="evidence" style="margin-top:14px">Median credential age {{ median_age_days }} days. Buckets past 90 days are shown in the overdue colour because that is the fallback interval; accounts with a shorter policy interval can be out of policy inside a green bucket, so treat this as shape rather than a control.</p>
+  </div>
+
+  <div class="panel">
+    <h2>Population by account kind</h2>
+    <div class="bars">
+      {% for row in kind_breakdown %}
+      <div class="row">
+        <span>{{ row.kind }}</span>
+        <span class="track"><span class="lump" style="width:{{ row.percent }}%;{% if row.kind == 'service' or row.kind == 'bot' or row.kind == 'application' %}background:var(--non-human){% elif row.kind == 'unknown' %}background:var(--unknown){% endif %}"></span></span>
+        <span class="count">{{ row.count }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% if unvaulted_count %}
+    <p class="evidence" style="margin-top:14px"><span class="stale">{{ unvaulted_count }}</span> privileged accounts have been discovered on target systems and are not held in any vault.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="grid two" style="margin-bottom:18px">
+  <div class="panel">
+    <h2>Findings needing attention</h2>
+    <table>
+      <thead><tr><th>Sev</th><th>Rule</th><th>Account</th><th>Detail</th><th class="num">Age</th></tr></thead>
+      <tbody>
+      {% for finding in top_findings %}
+        <tr>
+          <td><span class="sev {{ finding.severity }}">{{ finding.severity }}</span></td>
+          <td class="dim">{{ finding.rule_id }}</td>
+          <td class="name"><a href="{% url 'account-detail' finding.account.pk %}">{{ finding.account.username }}</a></td>
+          <td class="dim">{{ finding.title }}</td>
+          <td class="num dim">{{ finding.age_days|humanise_days }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5" class="empty">No open findings. Confirm collection is current before trusting this.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2>Open findings by rule</h2>
+    <table>
+      <thead><tr><th>Rule</th><th>Condition</th><th class="num">Count</th></tr></thead>
+      <tbody>
+      {% for row in rule_rollup %}
+        <tr>
+          <td><span class="sev {{ row.severity }}">{{ row.rule_id }}</span></td>
+          <td class="dim">{{ row.title }}</td>
+          <td class="num">{{ row.count }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="3" class="empty">Nothing open.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="grid two">
+  <div class="panel">
+    <h2>Recent lifecycle changes</h2>
+    <ul class="timeline">
+      {% for event in recent_events %}
+      <li>
+        <span class="when">{{ event.occurred_at|date:"Y-m-d H:i" }}</span>
+        <span class="what">{{ event.get_kind_display }}</span>
+        <span>{{ event.account.username }} <span style="color:var(--ink-faint)">&middot; {{ event.account.system.name }}{% if event.actor %} &middot; {{ event.actor }}{% endif %}</span></span>
+      </li>
+      {% empty %}
+      <li><span class="when">&mdash;</span><span class="what">No events collected yet</span><span></span></li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="panel">
+    <h2>Collection health</h2>
+    <table>
+      <thead><tr><th>Platform</th><th>Last run</th><th class="num">Accounts</th><th class="num">Findings</th></tr></thead>
+      <tbody>
+      {% for row in platforms %}
+        <tr>
+          <td class="name">{{ row.system.name }} <span class="tag unknown">{{ row.system.vendor }}</span></td>
+          <td class="{% if row.stale %}stale{% else %}dim{% endif %}">
+            {% if row.system.last_successful_collection %}{{ row.system.last_successful_collection|date:"Y-m-d H:i" }}{% else %}never{% endif %}
+            {% if row.stale %} &middot; stale{% endif %}
+          </td>
+          <td class="num">{{ row.accounts }}</td>
+          <td class="num">{{ row.open_findings }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="empty">Add a platform under Configuration to start collecting.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="evidence" style="margin-top:12px">A stale platform means every detection for it has stopped firing. Silence is not compliance.</p>
+  </div>
+</section>
+{% endblock %}

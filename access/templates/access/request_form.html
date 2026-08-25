@@ -1,0 +1,62 @@
+{% extends "dashboard/base.html" %}
+{% block title %}Request access{% endblock %}
+
+{% block content %}
+<p class="eyebrow">Raise an access request</p>
+
+<section class="grid two">
+  <div class="panel">
+    <h2>Request</h2>
+    <form method="post">
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+        {% for error in form.non_field_errors %}<div class="notice error">{{ error }}</div>{% endfor %}
+      {% endif %}
+      {% for field in form %}
+      <div class="field">
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+        {% for error in field.errors %}<div class="error">{{ error }}</div>{% endfor %}
+      </div>
+      {% endfor %}
+      <div class="actions">
+        <button type="submit" class="primary">Raise request</button>
+        <a href="{% url 'access-queue' %}" style="color:var(--ink-faint);font-family:var(--mono);font-size:11.5px">Cancel</a>
+      </div>
+    </form>
+  </div>
+
+  <div>
+    <div class="panel" style="margin-bottom:16px">
+      <h2>What the policy will ask for</h2>
+      <table>
+        <thead><tr><th>Production resource</th><th>Policy</th><th class="num">Approvals</th><th class="num">Max days</th></tr></thead>
+        <tbody>
+        {% for row in policies %}
+          <tr>
+            <td class="name">{{ row.resource.identifier }}</td>
+            <td class="dim">{{ row.policy.name|default:"none matched" }}</td>
+            <td class="num">{{ row.approvals }}</td>
+            <td class="num">{{ row.ceiling|default:"&mdash;" }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="4" class="empty">No production resources reconciled yet.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="evidence" style="margin-top:12px">Shown before you submit rather than discovered by refusal. A requester who learns the ceiling the hard way asks for the maximum every time afterwards.</p>
+    </div>
+
+    <div class="panel">
+      <h2>What happens next</h2>
+      <ul class="timeline">
+        <li><span class="when">1</span><span class="what">Approvals</span><span>Every approver must be someone other than you, and other than the person the access is for.</span></li>
+        <li><span class="when">2</span><span class="what">Handoff</span><span>Approval does not grant anything. The change is passed to the system that performs it, and that reference is recorded here.</span></li>
+        <li><span class="when">3</span><span class="what">Reconciliation</span><span>The next platform pull confirms the access exists. An approval that was never provisioned shows up as approved with no grant.</span></li>
+        <li><span class="when">4</span><span class="what">Expiry</span><span>On the expiry date the request closes. Whether the access actually went away is checked separately, and reported if it did not.</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+{% endblock %}

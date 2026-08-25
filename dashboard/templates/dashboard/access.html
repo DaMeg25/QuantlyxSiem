@@ -1,0 +1,153 @@
+{% extends "dashboard/base.html" %}
+{% load lifecycle %}
+{% block title %}Access{% endblock %}
+
+{% block content %}
+<p class="eyebrow">Developer and bot access</p>
+<div style="margin-bottom:18px;display:flex;gap:10px">
+  <a href="{% url 'access-request-create' %}"><button class="primary">Raise a request</button></a>
+  <a href="{% url 'access-queue' %}"><button class="quiet">Approval queue</button></a>
+</div>
+
+<section class="grid four" style="margin-bottom:18px">
+  <div class="panel figure">
+    <span class="value">{{ grant_count }}</span>
+    <span class="caption">live grants across {{ resource_count }} resources, {{ production_count }} of them production</span>
+  </div>
+  <div class="panel figure">
+    <span class="value {% if unapproved_count %}overdue{% else %}fresh{% endif %}">{{ unapproved_count }}</span>
+    <span class="caption">grants with no approved request behind them</span>
+  </div>
+  <div class="panel figure">
+    <span class="value {% if overdue_count %}critical{% else %}fresh{% endif %}">{{ overdue_count }}</span>
+    <span class="caption">expired on paper, still live on the platform</span>
+  </div>
+  <div class="panel figure">
+    <span class="value non-human">{{ bot_ownerless }}<span class="unit"> of {{ bot_elevated }}</span></span>
+    <span class="caption">elevated bot grants with no responsible human named</span>
+  </div>
+</section>
+
+<section class="grid two" style="margin-bottom:18px">
+  <div class="panel">
+    <h2>Awaiting approval</h2>
+    <table>
+      <thead><tr><th>Reference</th><th>Who</th><th>Resource</th><th>Level</th><th>Needs</th><th class="num">Waiting</th></tr></thead>
+      <tbody>
+      {% for row in pending %}
+        <tr>
+          <td class="dim"><a href="{% url 'access-request-detail' row.reference %}">{{ row.reference }}</a>{% if row.ticket_reference %}<div style="color:var(--ink-faint);font-size:10.5px">{{ row.ticket_reference }}</div>{% endif %}</td>
+          <td class="name">{{ row.principal.identifier }}
+            <div style="color:var(--ink-faint);font-size:10.5px">{% if row.principal.is_non_human %}<span class="tag bot">{{ row.principal.principal_type }}</span>{% else %}{{ row.principal.team|default:"&mdash;" }}{% endif %}</div>
+          </td>
+          <td class="dim">{{ row.resource.identifier }}{% if row.resource.production %} <span class="sev high">prod</span>{% endif %}</td>
+          <td class="dim">{{ row.access_level }}</td>
+          <td class="dim">{{ row.approvals_recorded }} / {{ row.approvals_required }}</td>
+          <td class="num dim">{{ row.age_days|humanise_days }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="empty">Nothing pending.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="evidence" style="margin-top:12px">Decisions are recorded through the workflow, which refuses self-approval and chains each record to the one before it. Nothing here grants access; provisioning is handed to the system that owns it.</p>
+  </div>
+
+  <div class="panel">
+    <h2>Access by level</h2>
+    <div class="bars">
+      {% for row in by_level %}
+      <div class="row">
+        <span>{{ row.access_level }}</span>
+        <span class="track"><span class="lump" style="width:{{ row.percent }}%;{% if row.elevated %}background:var(--approaching){% endif %}"></span></span>
+        <span class="count">{{ row.count }}</span>
+      </div>
+      {% empty %}
+      <div class="row"><span>&mdash;</span><span class="track"></span><span class="count">0</span></div>
+      {% endfor %}
+    </div>
+
+    <h2 style="margin-top:20px">Standing elevated access on production</h2>
+    <table>
+      <thead><tr><th>Who</th><th>Resource</th><th>Level</th></tr></thead>
+      <tbody>
+      {% for grant in standing %}
+        <tr>
+          <td class="name">{{ grant.principal.identifier }}</td>
+          <td class="dim">{{ grant.resource.identifier }}</td>
+          <td class="dim">{{ grant.access_level }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="3" class="empty">All production access is time-bounded.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="evidence" style="margin-top:12px">No expiry means nothing removes it without someone deciding to. That decision is the one that never gets made.</p>
+  </div>
+</section>
+
+<section class="grid two">
+  <div class="panel" style="border-left:2px solid var(--overdue)">
+    <h2>Access with no approval behind it</h2>
+    <table>
+      <thead><tr><th>Who</th><th>Resource</th><th>Level</th><th>Since</th></tr></thead>
+      <tbody>
+      {% for grant in unapproved %}
+        <tr>
+          <td class="name">{{ grant.principal.identifier }}
+            <div style="color:var(--ink-faint);font-size:10.5px">{{ grant.principal.get_principal_type_display }}{% if grant.principal.responsible_owner %} &middot; {{ grant.principal.responsible_owner }}{% endif %}</div>
+          </td>
+          <td class="dim">{{ grant.resource.identifier }}{% if grant.resource.production %} <span class="sev critical">prod</span>{% endif %}</td>
+          <td class="dim">{{ grant.access_level }}</td>
+          <td class="dim">{{ grant.granted_at|date:"Y-m-d" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="empty">Every grant traces to an approved request.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="evidence" style="margin-top:12px">The access is real. The authority for it is not recorded anywhere, which is a different problem from the access being wrong &mdash; most of these will turn out to be legitimate and undocumented.</p>
+  </div>
+
+  <div>
+    <div class="panel" style="margin-bottom:16px;border-left:2px solid var(--critical)">
+      <h2>Expired on paper, live in reality</h2>
+      <table>
+        <thead><tr><th>Who</th><th>Resource</th><th>Level</th><th class="num">Overdue</th></tr></thead>
+        <tbody>
+        {% for grant in overdue %}
+          <tr>
+            <td class="name">{{ grant.principal.identifier }}</td>
+            <td class="dim">{{ grant.resource.identifier }}</td>
+            <td class="dim">{{ grant.access_level }}</td>
+            <td class="num stale">{{ grant.overdue_days }}d</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="4" class="empty">Every expiry took effect.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="evidence" style="margin-top:12px">Worse than having no expiry, because the register says the access is gone.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Recent decisions</h2>
+      <table>
+        <thead><tr><th>Reference</th><th>Who</th><th>Resource</th><th>Outcome</th></tr></thead>
+        <tbody>
+        {% for row in recent_decisions %}
+          <tr>
+            <td class="dim"><a href="{% url 'access-request-detail' row.reference %}">{{ row.reference }}</a></td>
+            <td class="name">{{ row.principal.identifier }}</td>
+            <td class="dim">{{ row.resource.identifier }}</td>
+            <td class="dim">{{ row.get_state_display }}<div style="color:var(--ink-faint);font-size:10.5px">{{ row.decided_at|date:"Y-m-d" }}</div></td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="4" class="empty">No decisions recorded.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}

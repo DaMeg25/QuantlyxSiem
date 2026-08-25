@@ -1,0 +1,97 @@
+{% extends "dashboard/base.html" %}
+{% load lifecycle %}
+{% block title %}Approval queue{% endblock %}
+
+{% block content %}
+<p class="eyebrow">Approval queue &mdash; acting as {{ identity }}{% if approver %} &middot; {{ approver.groups|join:", " }}{% else %} &middot; not a registered approver{% endif %}</p>
+
+<div style="margin-bottom:18px">
+  <a href="{% url 'access-request-create' %}"><button class="primary">Raise a request</button></a>
+</div>
+
+<section class="grid two" style="margin-bottom:18px">
+  <div class="panel">
+    <h2>You can decide these ({{ actionable|length }})</h2>
+    <table>
+      <thead><tr><th>Reference</th><th>Who</th><th>Resource</th><th>Level</th><th>Progress</th><th class="num">Waiting</th></tr></thead>
+      <tbody>
+      {% for row in actionable %}
+        <tr>
+          <td class="dim"><a href="{% url 'access-request-detail' row.request.reference %}">{{ row.request.reference }}</a></td>
+          <td class="name">{{ row.request.principal.identifier }}
+            {% if row.request.principal.is_non_human %}<div style="color:var(--ink-faint);font-size:10.5px">owner {{ row.request.principal.responsible_owner|default:"none" }}</div>{% endif %}
+          </td>
+          <td class="dim">{{ row.request.resource.identifier }}{% if row.request.resource.production %} <span class="sev high">prod</span>{% endif %}</td>
+          <td class="dim">{{ row.request.access_level }}</td>
+          <td class="dim">{{ row.request.approvals_recorded }} / {{ row.request.approvals_required }}</td>
+          <td class="num dim">{{ row.request.age_days|humanise_days }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="empty">Nothing awaiting your decision.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2>Pending, but not yours to decide ({{ blocked|length }})</h2>
+    <table>
+      <thead><tr><th>Reference</th><th>Resource</th><th>Why not</th></tr></thead>
+      <tbody>
+      {% for row in blocked %}
+        <tr>
+          <td class="dim"><a href="{% url 'access-request-detail' row.request.reference %}">{{ row.request.reference }}</a></td>
+          <td class="dim">{{ row.request.resource.identifier }}</td>
+          <td class="dim">{{ row.refusal }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="3" class="empty">Nothing.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="evidence" style="margin-top:12px">Shown rather than hidden, so the separation is visible. A queue that silently omits your own requests looks like a bug; one that lists them with the reason does not.</p>
+  </div>
+</section>
+
+<section class="grid two">
+  <div class="panel">
+    <h2>Approved, awaiting handoff</h2>
+    <table>
+      <thead><tr><th>Reference</th><th>Who</th><th>Resource</th><th class="num">Approved</th></tr></thead>
+      <tbody>
+      {% for row in awaiting_handoff %}
+        <tr>
+          <td class="dim"><a href="{% url 'access-request-detail' row.reference %}">{{ row.reference }}</a></td>
+          <td class="name">{{ row.principal.identifier }}</td>
+          <td class="dim">{{ row.resource.identifier }}</td>
+          <td class="num dim">{{ row.decided_at|date:"Y-m-d" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="empty">Nothing waiting.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="evidence" style="margin-top:12px">Approved is not provisioned. Anything sitting here for long is an approval nobody acted on.</p>
+  </div>
+
+  <div class="panel">
+    <h2>Raised by or for you</h2>
+    <table>
+      <thead><tr><th>Reference</th><th>Resource</th><th>Level</th><th>State</th><th>Expires</th></tr></thead>
+      <tbody>
+      {% for row in mine %}
+        <tr>
+          <td class="dim"><a href="{% url 'access-request-detail' row.reference %}">{{ row.reference }}</a></td>
+          <td class="dim">{{ row.resource.identifier }}</td>
+          <td class="dim">{{ row.access_level }}</td>
+          <td class="dim">{{ row.get_state_display }}</td>
+          <td class="dim">{{ row.expires_at|date:"Y-m-d"|default:"&mdash;" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5" class="empty">You have not raised any requests.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

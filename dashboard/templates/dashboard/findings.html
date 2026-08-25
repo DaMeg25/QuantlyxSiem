@@ -1,0 +1,63 @@
+{% extends "dashboard/base.html" %}
+{% load lifecycle %}
+{% block title %}Findings{% endblock %}
+
+{% block content %}
+<p class="eyebrow">Governance findings</p>
+
+<form class="filters" method="get">
+  <select name="state">
+    <option value="open" {% if state == "open" %}selected{% endif %}>open and acknowledged</option>
+    <option value="suppressed" {% if state == "suppressed" %}selected{% endif %}>suppressed</option>
+    <option value="resolved" {% if state == "resolved" %}selected{% endif %}>resolved</option>
+    <option value="all" {% if state == "all" %}selected{% endif %}>everything</option>
+  </select>
+  <select name="severity">
+    <option value="">any severity</option>
+    {% for value, label in severities %}
+      <option value="{{ value }}" {% if severity == value %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <select name="rule_id">
+    <option value="">any rule</option>
+    {% for value in rule_ids %}
+      <option value="{{ value }}" {% if rule_id == value %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit">Apply</button>
+</form>
+
+<div class="panel">
+<table>
+  <thead>
+    <tr><th>Sev</th><th>Rule</th><th>Account</th><th>Platform</th><th>Evidence</th><th class="num">Open for</th><th>State</th></tr>
+  </thead>
+  <tbody>
+  {% for finding in rows %}
+    <tr>
+      <td><span class="sev {{ finding.severity }}">{{ finding.severity }}</span></td>
+      <td class="dim">{{ finding.rule_id }}<div style="color:var(--ink-faint);font-size:10.5px">{{ finding.category }}</div></td>
+      <td class="name">
+        {% if finding.account %}<a href="{% url 'account-detail' finding.account.pk %}">{{ finding.account.username }}</a>
+        <div style="color:var(--ink-faint);font-size:10.5px">{{ finding.account.target_address }}</div>{% else %}&mdash;{% endif %}
+      </td>
+      <td class="dim">{{ finding.system.name }}</td>
+      <td class="dim">{{ finding.title }}
+        <div class="evidence">{% for key, value in finding.evidence.items %}{{ key }}={{ value }}{% if not forloop.last %} &middot; {% endif %}{% endfor %}</div>
+      </td>
+      <td class="num dim">{{ finding.age_days|humanise_days }}</td>
+      <td class="dim">{{ finding.get_state_display }}{% if finding.assigned_to %}<div style="color:var(--ink-faint);font-size:10.5px">{{ finding.assigned_to }}</div>{% endif %}</td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="7" class="empty">Nothing matches. Check collection health before reading this as clean.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<div class="pager">
+  {% if rows.has_previous %}<a href="?page={{ rows.previous_page_number }}&amp;state={{ state }}&amp;severity={{ severity }}&amp;rule_id={{ rule_id }}">previous</a>{% endif %}
+  <span>page {{ rows.number }} of {{ rows.paginator.num_pages }}</span>
+  {% if rows.has_next %}<a href="?page={{ rows.next_page_number }}&amp;state={{ state }}&amp;severity={{ severity }}&amp;rule_id={{ rule_id }}">next</a>{% endif %}
+</div>
+{% endblock %}
